@@ -1,0 +1,124 @@
+import tkinter as tk
+from tkinter import filedialog
+from PIL import Image, ImageTk
+
+class MiniWindow(tk.Frame):
+    def __init__(self, master, index):
+        super().__init__(master, bd=2, relief=tk.RAISED)
+        self.pack(side=tk.LEFT, padx=5, pady=5, fill=tk.BOTH, expand=True)
+
+        self.canvas = tk.Canvas(self, width=200, height=200)
+        self.canvas.pack(fill=tk.BOTH, expand=True)
+
+        self.selection_label = tk.Label(self, text=f"Picture {index + 1} not selected", fg="black")
+        self.selection_label.pack()
+
+        self.zoom_status_label = tk.Label(self, text="", fg="black")
+        self.zoom_status_label.pack()
+
+        self.selected = False
+        self.image_path = None
+        self.original_image = None
+        self.zoom_factor = 1.0
+        self.pan_offset = [0, 0]  # Offset for panning
+
+        self.index = index
+
+        self.bind_all(f"<KeyPress-{index + 1}>", lambda event: self.toggle_selection_status())
+
+    def load_image(self, image_path):
+        if image_path:
+            self.image_path = image_path
+            img = Image.open(image_path)
+            self.original_image = img.copy()
+            self.update_image()
+
+    def update_image(self):
+        if self.image_path:
+            img = self.original_image.copy()
+            img = img.resize((int(200 * self.zoom_factor), int(200 * self.zoom_factor)), Image.LANCZOS)
+            img = img.crop((
+                int(self.pan_offset[0]),
+                int(self.pan_offset[1]),
+                int(200 + self.pan_offset[0]),
+                int(200 + self.pan_offset[1])
+            ))
+            self.photo = ImageTk.PhotoImage(img)
+            self.canvas.create_image(0, 0, anchor=tk.NW, image=self.photo)
+
+    def toggle_selection_status(self):
+        if self.image_path:
+            self.selected = not self.selected
+            status = "selected" if self.selected else "not selected"
+            color = "green" if self.selected else "black"
+            self.selection_label.config(text=f"Picture {self.index + 1} {status}", fg=color)
+
+    def handle_zoom(self, factor):
+        if self.selected:
+            self.zoom_factor *= factor
+            self.update_image()
+            direction = 'in' if factor > 1.0 else 'out'
+            self.zoom_status_label.config(text=f"Picture {self.index + 1} is zoomed {direction}")
+
+    def handle_pan(self, dx, dy):
+        if self.selected:
+            self.pan_offset[0] += dx
+            self.pan_offset[1] += dy
+            self.update_image()
+            self.zoom_status_label.config(text=f"Picture {self.index + 1} is panned")
+
+    def reset_image(self):
+        if self.selected:
+            self.zoom_factor = 1.0
+            self.pan_offset = [0, 0]  # Reset pan offset
+            self.update_image()
+            self.zoom_status_label.config(text=f"Picture {self.index + 1} is reset")
+
+class MainWindow(tk.Tk):
+    def __init__(self):
+        super().__init__()
+
+        self.title("Main Window")
+        self.geometry("850x650")
+
+        menu_bar = tk.Menu(self)
+        self.config(menu=menu_bar)
+
+        file_menu = tk.Menu(menu_bar, tearoff=0)
+        menu_bar.add_cascade(label="File", menu=file_menu)
+        for i in range(4):
+            file_menu.add_command(label=f"Open Image {i + 1}", command=lambda index=i: self.open_image(index))
+
+        self.create_mini_windows()
+
+        # Bind arrow key events to propagate to all MiniWindow instances
+        self.bind_all("<Right>", lambda event: self.handle_arrow_key(event, 10, 0))
+        self.bind_all("<Left>", lambda event: self.handle_arrow_key(event, -10, 0))
+        self.bind_all("<Up>", lambda event: self.handle_arrow_key(event, 0, -10))
+        self.bind_all("<Down>", lambda event: self.handle_arrow_key(event, 0, 10))
+        self.bind_all("<KeyPress-+>", lambda event: self.handle_zoom(event,1.1))
+        self.bind_all("<KeyPress-->", lambda event:self.handle_zoom(event, 0.9))
+       
+
+
+    def handle_zoom (self,event,factor):
+        for mini_window in self.mini_windows: 
+            mini_window.handle_zoom(factor)
+
+
+    def handle_arrow_key(self, event, dx, dy):
+        for mini_window in self.mini_windows:
+            mini_window.handle_pan(dx, dy)
+
+    
+    def open_image(self, index):
+        file_path = filedialog.askopenfilename(filetypes=[("Image files", ".png;.jpg;*.jpeg")])
+        if file_path:
+            self.mini_windows[index].load_image(file_path)
+
+    def create_mini_windows(self):
+        self.mini_windows = [MiniWindow(self, i) for i in range(4)]
+
+if __name__ == "__main__":
+    app = MainWindow()
+    app.mainloop()
